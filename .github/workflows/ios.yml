@@ -8,6 +8,13 @@ on:
         required: false
         default: ""
         type: string
+    secrets:
+      IOS_CERT_P12_BASE64:
+        required: false
+      IOS_CERT_PASSWORD:
+        required: false
+      IOS_PROVISIONING_PROFILE_BASE64:
+        required: false
   workflow_dispatch:
 
 jobs:
@@ -35,7 +42,111 @@ jobs:
         run: lib/scripts/patch.ps1 iOS
         continue-on-error: true
 
-      - name: Build iOS
+      - name: Configure iOS signing
+        env:
+          IOS_CERT_P12_BASE64: ${{ secrets.IOS_CERT_P12_BASE64 }}
+          IOS_CERT_PASSWORD: ${{ secrets.IOS_CERT_PASSWORD }}
+          IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+          IOS_BUNDLE_ID: ${{ vars.IOS_BUNDLE_ID }}
+          IOS_EXPORT_METHOD: ${{ vars.IOS_EXPORT_METHOD }}
+        run: |
+          if [ -n "$IOS_CERT_P12_BASE64" ] && [ -n "$IOS_CERT_PASSWORD" ] && [ -n "$IOS_PROVISIONING_PROFILE_BASE64" ]; then
+            echo "IOS_SIGNING_ENABLED=true" >> "$GITHUB_ENV"
+          else
+            echo "IOS_SIGNING_ENABLED=false" >> "$GITHUB_ENV"
+            if [ -n "$IOS_BUNDLE_ID" ]; then
+              echo "IOS_BUNDLE_ID=$IOS_BUNDLE_ID" >> "$GITHUB_ENV"
+            fi
+            exit 0
+          fi
+
+          CERTIFICATE_PATH="$RUNNER_TEMP/ios_distribution.p12"
+          PROFILE_PATH="$RUNNER_TEMP/ios_profile.mobileprovision"
+          PROFILE_PLIST_PATH="$RUNNER_TEMP/ios_profile.plist"
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+
+          echo "$IOS_CERT_P12_BASE64" | base64 --decode > "$CERTIFICATE_PATH"
+          echo "$IOS_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$PROFILE_PATH"
+          security cms -D -i "$PROFILE_PATH" > "$PROFILE_PLIST_PATH"
+
+          PROFILE_UUID=$(/usr/libexec/PlistBuddy -c "Print UUID" "$PROFILE_PLIST_PATH")
+          PROFILE_NAME=$(/usr/libexec/PlistBuddy -c "Print Name" "$PROFILE_PLIST_PATH")
+          TEAM_ID=$(/usr/libexec/PlistBuddy -c "Print TeamIdentifier:0" "$PROFILE_PLIST_PATH")
+
+          if [ -z "$IOS_BUNDLE_ID" ]; then
+            APP_IDENTIFIER=$(/usr/libexec/PlistBuddy -c "Print Entitlements:application-identifier" "$PROFILE_PLIST_PATH")
+            IOS_BUNDLE_ID="${APP_IDENTIFIER#*.}"
+          fi
+
+          if [ -z "$IOS_EXPORT_METHOD" ]; then
+            IOS_EXPORT_METHOD="ad-hoc"
+          fi
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" -P "$IOS_CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          cp "$PROFILE_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
+
+          echo "IOS_BUNDLE_ID=$IOS_BUNDLE_ID" >> "$GITHUB_ENV"
+          echo "IOS_PROFILE_NAME=$PROFILE_NAME" >> "$GITHUB_ENV"
+          echo "IOS_TEAM_ID=$TEAM_ID" >> "$GITHUB_ENV"
+          echo "IOS_EXPORT_METHOD=$IOS_EXPORT_METHOD" >> "$GITHUB_ENV"
+
+      - name: Override iOS Bundle ID
+        if: ${{ env.IOS_BUNDLE_ID != '' }}
+        run: |
+          ruby -e '
+            path = "ios/Runner.xcodeproj/project.pbxproj"
+            bundle_id = ENV.fetch("IOS_BUNDLE_ID")
+            team_id = ENV["IOS_TEAM_ID"]
+            profile_name = ENV["IOS_PROFILE_NAME"]
+            content = File.read(path)
+            content.gsub!(/PRODUCT_BUNDLE_IDENTIFIER = [^;]+;/, "PRODUCT_BUNDLE_IDENTIFIER = #{bundle_id};")
+            if team_id && !team_id.empty? && profile_name && !profile_name.empty?
+              content.gsub!(/DEVELOPMENT_TEAM = "";/, "CODE_SIGN_STYLE = Manual;\n\t\t\t\tDEVELOPMENT_TEAM = #{team_id};\n\t\t\t\tPROVISIONING_PROFILE_SPECIFIER = \"#{profile_name}\";")
+            end
+            File.write(path, content)
+          '
+
+      - name: Create export options
+        if: ${{ env.IOS_SIGNING_ENABLED == 'true' }}
+        run: |
+          cat > ios/ExportOptions.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>${IOS_EXPORT_METHOD}</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>teamID</key>
+            <string>${IOS_TEAM_ID}</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>${IOS_BUNDLE_ID}</key>
+              <string>${IOS_PROFILE_NAME}</string>
+            </dict>
+            <key>compileBitcode</key>
+            <false/>
+          </dict>
+          </plist>
+          EOF
+
+      - name: Build signed iOS
+        if: ${{ env.IOS_SIGNING_ENABLED == 'true' }}
+        run: |
+          flutter build ipa --release --dart-define-from-file=pili_release.json --export-options-plist=ios/ExportOptions.plist
+          cp build/ios/ipa/*.ipa "PiliPlus_ios_${{env.version}}.ipa"
+
+      - name: Build unsigned iOS
+        if: ${{ env.IOS_SIGNING_ENABLED != 'true' }}
         run: |
           flutter build ios --release --no-codesign --dart-define-from-file=pili_release.json
           ln -sf ./build/ios/iphoneos Payload
@@ -44,11 +155,11 @@ jobs:
           zip -r9 PiliPlus_ios_${{env.version}}.ipa Payload/Runner.app
 
       - name: Release
-        if: ${{ github.event.inputs.tag != '' }}
+        if: ${{ inputs.tag != '' }}
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.inputs.tag }}
-          name: ${{ github.event.inputs.tag }}
+          tag_name: ${{ inputs.tag }}
+          name: ${{ inputs.tag }}
           files: |
             PiliPlus_ios_*.ipa
 

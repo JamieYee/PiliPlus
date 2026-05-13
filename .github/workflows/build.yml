@@ -149,6 +149,7 @@ jobs:
         if: ${{ (github.event_name == 'pull_request' && github.repository == 'bggRGjQaUbCoE/PiliPlus') || github.event.inputs.build_ios == 'true' }}
         uses: ./.github/workflows/ios.yml
         permissions: write-all
+        secrets: inherit
         with:
             tag: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || '' }}
 
