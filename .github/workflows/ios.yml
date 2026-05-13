@@ -79,9 +79,24 @@ jobs:
             IOS_BUNDLE_ID="${APP_IDENTIFIER#*.}"
           fi
 
-          if [ -z "$IOS_EXPORT_METHOD" ]; then
-            IOS_EXPORT_METHOD="ad-hoc"
-          fi
+          case "$(echo "$IOS_EXPORT_METHOD" | tr '[:upper:]' '[:lower:]')" in
+            ""|"ad-hoc"|"adhoc"|"release-testing")
+              IOS_EXPORT_METHOD="release-testing"
+              ;;
+            "development"|"debug"|"debugging")
+              IOS_EXPORT_METHOD="debugging"
+              ;;
+            "app-store"|"app-store-connect"|"appstore")
+              IOS_EXPORT_METHOD="app-store-connect"
+              ;;
+            "enterprise"|"validation")
+              IOS_EXPORT_METHOD="$(echo "$IOS_EXPORT_METHOD" | tr '[:upper:]' '[:lower:]')"
+              ;;
+            *)
+              echo "::error::Unsupported IOS_EXPORT_METHOD: $IOS_EXPORT_METHOD. Use app-store-connect, release-testing, enterprise, debugging, or validation."
+              exit 1
+              ;;
+          esac
 
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
@@ -97,6 +112,7 @@ jobs:
           echo "IOS_PROFILE_NAME=$PROFILE_NAME" >> "$GITHUB_ENV"
           echo "IOS_TEAM_ID=$TEAM_ID" >> "$GITHUB_ENV"
           echo "IOS_EXPORT_METHOD=$IOS_EXPORT_METHOD" >> "$GITHUB_ENV"
+          echo "Using iOS export method: $IOS_EXPORT_METHOD"
 
       - name: Override iOS Bundle ID
         if: ${{ env.IOS_BUNDLE_ID != '' }}
@@ -142,8 +158,14 @@ jobs:
       - name: Build signed iOS
         if: ${{ env.IOS_SIGNING_ENABLED == 'true' }}
         run: |
+          set -euo pipefail
           flutter build ipa --release --dart-define-from-file=pili_release.json --export-options-plist=ios/ExportOptions.plist
-          cp build/ios/ipa/*.ipa "PiliPlus_ios_${{env.version}}.ipa"
+          ipa_path="$(find build/ios/ipa -maxdepth 1 -name "*.ipa" -print -quit)"
+          if [ -z "$ipa_path" ]; then
+            echo "::error::Signed IPA was not generated."
+            exit 1
+          fi
+          cp "$ipa_path" "PiliPlus_ios_${{env.version}}.ipa"
 
       - name: Build unsigned iOS
         if: ${{ env.IOS_SIGNING_ENABLED != 'true' }}
