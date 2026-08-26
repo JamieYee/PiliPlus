@@ -8,10 +8,10 @@
 
 - 手动运行时，可以构建上游的任意分支、Tag 或 Commit。
 - 修改 `main` 分支上的 iOS workflow 时，会自动执行一次只上传 Artifact、不发布 Release 的验证构建。
-- 每天北京时间 04:23 自动检查上游 `main`。如果对应版本尚未发布，则执行签名构建并创建 GitHub Release。
+- 每天北京时间 04:23 检查上游最新的正式 Release Tag。只有你的仓库中不存在该 Tag 对应的 Release 时，才会 checkout 该 Tag、执行签名构建并创建同名 Release；上游普通的 `main` 提交不会触发定时打包。
 - 每次成功构建都会上传签名后的 IPA Artifact，并保留 30 天。
 - 手动运行时，开启 `publish_release` 会同时创建 GitHub Release；关闭时只上传 Artifact。
-- 未手动填写 Release Tag 时，会按 `ios-v<上游版本>-<上游提交>` 自动生成。
+- 定时构建直接使用上游 Tag 作为本仓库的 Release Tag。手动构建未填写 Release Tag 时，会按 `ios-v<上游版本>-<上游提交>` 自动生成。
 
 ## Actions 配置
 
