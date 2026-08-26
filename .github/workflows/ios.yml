@@ -41,6 +41,8 @@ jobs:
     name: Resolve upstream version
     runs-on: ubuntu-latest
     outputs:
+      upstream_ref: ${{ steps.upstream_ref.outputs.checkout_ref }}
+      upstream_tag: ${{ steps.upstream_ref.outputs.upstream_tag }}
       upstream_sha: ${{ steps.metadata.outputs.upstream_sha }}
       upstream_short_sha: ${{ steps.metadata.outputs.upstream_short_sha }}
       version: ${{ steps.metadata.outputs.version }}
@@ -48,11 +50,45 @@ jobs:
       should_build: ${{ steps.metadata.outputs.should_build }}
       publish_release: ${{ steps.metadata.outputs.publish_release }}
     steps:
+      - name: Resolve upstream ref
+        id: upstream_ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          REQUESTED_REF: ${{ github.event.inputs.upstream_ref || 'main' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          checkout_ref="$REQUESTED_REF"
+          upstream_tag=""
+
+          if [ "$EVENT_NAME" = "schedule" ]; then
+            latest_release="$(curl --fail --silent --show-error \
+              --header "Authorization: Bearer $GH_TOKEN" \
+              --header "X-GitHub-Api-Version: 2022-11-28" \
+              "${GITHUB_API_URL}/repos/${UPSTREAM_REPOSITORY}/releases/latest")"
+            upstream_tag="$(jq -r '.tag_name // empty' <<< "$latest_release")"
+
+            if [ -z "$upstream_tag" ]; then
+              echo "::error::Unable to resolve the latest upstream Release tag."
+              exit 1
+            fi
+
+            checkout_ref="$upstream_tag"
+            echo "Latest upstream Release tag: $upstream_tag"
+          fi
+
+          {
+            echo "checkout_ref=$checkout_ref"
+            echo "upstream_tag=$upstream_tag"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Checkout upstream source
         uses: actions/checkout@v7
         with:
           repository: ${{ env.UPSTREAM_REPOSITORY }}
-          ref: ${{ github.event.inputs.upstream_ref || 'main' }}
+          ref: ${{ steps.upstream_ref.outputs.checkout_ref }}
           path: upstream
           fetch-depth: 1
 
@@ -63,6 +99,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           REQUESTED_TAG: ${{ github.event.inputs.release_tag || '' }}
           REQUESTED_PUBLISH: ${{ github.event.inputs.publish_release || 'false' }}
+          UPSTREAM_TAG: ${{ steps.upstream_ref.outputs.upstream_tag }}
         shell: bash
         run: |
           set -euo pipefail
@@ -78,7 +115,11 @@ jobs:
 
           release_tag="$REQUESTED_TAG"
           if [ -z "$release_tag" ]; then
-            release_tag="ios-v${version}-${upstream_short_sha}"
+            if [ -n "$UPSTREAM_TAG" ]; then
+              release_tag="$UPSTREAM_TAG"
+            else
+              release_tag="ios-v${version}-${upstream_short_sha}"
+            fi
           fi
 
           publish_release="$REQUESTED_PUBLISH"
@@ -309,6 +350,7 @@ jobs:
           body: |
             Signed iOS build of [bggRGjQaUbCoE/PiliPlus](https://github.com/bggRGjQaUbCoE/PiliPlus).
 
+            Upstream ref: `${{ needs.prepare.outputs.upstream_ref }}`
             Upstream commit: https://github.com/bggRGjQaUbCoE/PiliPlus/commit/${{ needs.prepare.outputs.upstream_sha }}
           files: ${{ env.IPA_PATH }}
 
