@@ -1,35 +1,41 @@
-# PiliPlus iOS Build
+# PiliPlus iOS 自动构建
 
-This repository contains only the GitHub Actions workflow used to build and sign PiliPlus for iOS. The application source is checked out from [bggRGjQaUbCoE/PiliPlus](https://github.com/bggRGjQaUbCoE/PiliPlus) at build time and is not copied into this repository.
+本仓库仅保存用于构建和签名 PiliPlus iOS 安装包的 GitHub Actions 工作流。
 
-## Build behavior
+构建时会从 [bggRGjQaUbCoE/PiliPlus](https://github.com/bggRGjQaUbCoE/PiliPlus) 临时拉取指定版本的源码，源码不会复制到本仓库的当前文件中。
 
-- A manual run can build any upstream branch, tag, or commit.
-- A change to the iOS workflow on `main` runs an artifact-only validation build.
-- A scheduled run checks upstream `main` once per day. It builds only when the generated Release tag does not already exist.
-- Every successful build uploads the signed IPA as a workflow artifact for 30 days.
-- Scheduled runs publish a GitHub Release automatically. Manual runs publish a Release when `publish_release` is enabled.
-- Generated Release tags use `ios-v<upstream-version>-<upstream-commit>` unless a manual run supplies a tag.
+## 构建方式
 
-## Repository configuration
+- 手动运行时，可以构建上游的任意分支、Tag 或 Commit。
+- 修改 `main` 分支上的 iOS workflow 时，会自动执行一次只上传 Artifact、不发布 Release 的验证构建。
+- 每天北京时间 04:23 自动检查上游 `main`。如果对应版本尚未发布，则执行签名构建并创建 GitHub Release。
+- 每次成功构建都会上传签名后的 IPA Artifact，并保留 30 天。
+- 手动运行时，开启 `publish_release` 会同时创建 GitHub Release；关闭时只上传 Artifact。
+- 未手动填写 Release Tag 时，会按 `ios-v<上游版本>-<上游提交>` 自动生成。
 
-Configure these under **Settings → Secrets and variables → Actions**.
+## Actions 配置
 
-Repository secrets:
+请在 **Settings → Secrets and variables → Actions** 中配置以下内容。
 
-- `IOS_CERT_P12_BASE64`: Base64-encoded Apple signing certificate (`.p12`).
-- `IOS_CERT_PASSWORD`: Password for the `.p12` file.
-- `IOS_PROVISIONING_PROFILE_BASE64`: Base64-encoded provisioning profile (`.mobileprovision`).
+### Repository secrets
 
-Repository variables:
+- `IOS_CERT_P12_BASE64`：经过 Base64 编码的 Apple 签名证书（`.p12`）。
+- `IOS_CERT_PASSWORD`：`.p12` 文件的密码。
+- `IOS_PROVISIONING_PROFILE_BASE64`：经过 Base64 编码的 provisioning profile（`.mobileprovision`）。
 
-- `IOS_BUNDLE_ID`: Bundle ID covered by the provisioning profile. It may be left empty for an exact, non-wildcard profile.
-- `IOS_EXPORT_METHOD`: `app-store-connect`, `release-testing`, `enterprise`, `debugging`, or `validation`. When empty, `release-testing` is used.
+### Repository variables
 
-The workflow never prints certificate or provisioning-profile contents. Signing files are written only to the temporary GitHub-hosted runner and are removed after the build.
+- `IOS_BUNDLE_ID`：provisioning profile 所覆盖的 Bundle ID。使用精确且非通配符的 profile 时可以留空，工作流会自动读取。
+- `IOS_EXPORT_METHOD`：可填写 `app-store-connect`、`release-testing`、`enterprise`、`debugging` 或 `validation`；留空时默认使用 `release-testing`。
 
-## Run manually
+工作流不会输出证书、密码或 provisioning profile 的内容。签名文件只会临时写入 GitHub 托管的构建机器，并在构建结束后删除。
 
-Open **Actions → Build signed iOS IPA → Run workflow**, choose the upstream ref, and decide whether to publish a Release. Leaving the Release tag empty gives the build a deterministic tag derived from the upstream version and commit.
+## 手动构建
 
-PiliPlus is maintained in the upstream repository. Please report application issues there; this repository is only for the private signing/build configuration and generated iOS packages.
+打开 **Actions → Build signed iOS IPA → Run workflow**：
+
+1. 在 `upstream_ref` 中填写要构建的上游分支、Tag 或 Commit，默认是 `main`。
+2. 开启 `publish_release` 时，构建成功后会创建 Release 并附加 IPA；关闭时只生成可在本次运行页面下载的 Artifact。
+3. `release_tag` 可以留空，由工作流根据上游版本和 Commit 自动生成。
+
+PiliPlus 应用本身由上游仓库维护。本仓库只负责个人 iOS 签名构建和 IPA 发布，应用功能问题请前往上游仓库反馈。
