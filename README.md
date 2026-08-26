@@ -5,6 +5,7 @@ This repository contains only the GitHub Actions workflow used to build and sign
 ## Build behavior
 
 - A manual run can build any upstream branch, tag, or commit.
+- A change to the iOS workflow on `main` runs an artifact-only validation build.
 - A scheduled run checks upstream `main` once per day. It builds only when the generated Release tag does not already exist.
 - Every successful build uploads the signed IPA as a workflow artifact for 30 days.
 - Scheduled runs publish a GitHub Release automatically. Manual runs publish a Release when `publish_release` is enabled.
