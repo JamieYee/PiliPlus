@@ -18,6 +18,11 @@ on:
         required: false
         default: ""
         type: string
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/ios.yml
   schedule:
     - cron: "23 20 * * *"
 
