@@ -1,0 +1,63 @@
+name: Deploy OTA installation page
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows:
+      - Build signed iOS IPA
+    types:
+      - completed
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/pages.yml
+      - .github/scripts/generate_ota.py
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Generate OTA site
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout build repository
+        uses: actions/checkout@v6
+
+      - name: Configure GitHub Pages
+        id: pages
+        uses: actions/configure-pages@v5
+
+      - name: Generate installation manifest and page
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 .github/scripts/generate_ota.py \
+            --repository "${{ github.repository }}" \
+            --site-url "${{ steps.pages.outputs.base_url }}" \
+            --output _site
+
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+  deploy:
+    name: Deploy OTA site
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
