@@ -153,8 +153,8 @@ def write_site(output: Path, site_url: str, release: dict, asset: dict, app: dic
     <h1>PiliPlus iOS</h1>
     <p class="subtitle">个人签名 OTA 安装页</p>
     <dl>
-      <dt>上游 Tag</dt><dd>{release_tag}</dd>
-      <dt>应用版本</dt><dd>{short_version}（构建 {build_number}）</dd>
+      <dt>发布版本</dt><dd>{release_tag}</dd>
+      <dt>iOS 内部版本</dt><dd>{short_version}（构建 {build_number}）</dd>
       <dt>Bundle ID</dt><dd>{bundle_id}</dd>
     </dl>
     <a class="install" href="{install_href}">在此 iPhone / iPad 上安装</a>
