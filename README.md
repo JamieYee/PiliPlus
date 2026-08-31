@@ -40,3 +40,15 @@
 3. `release_tag` 可以留空，由工作流根据上游版本和 Commit 自动生成。
 
 PiliPlus 应用本身由上游仓库维护。本仓库只负责个人 iOS 签名构建和 IPA 发布，应用功能问题请前往上游仓库反馈。
+
+## OTA 在线安装与更新
+
+GitHub Pages 会提供一个适用于 Ad Hoc 签名的 OTA 安装页：
+
+<https://jamieyee.github.io/PiliPlus-iOS-Build/>
+
+- 签名构建工作流成功结束后，OTA 工作流会读取本仓库最新 Release 中的 IPA。
+- 工作流会直接从 IPA 的 `Info.plist` 提取真实的 Bundle ID、应用版本和构建号，并生成 `manifest.plist`，不会把上游 Tag 错当成应用内部版本。
+- 请在已登记 UDID 的 iPhone 或 iPad 上使用 Safari 打开安装页，然后点击“在此 iPhone / iPad 上安装”。
+- 更新时可再次点击安装。只有 Bundle ID 和签名团队保持一致、provisioning profile 仍有效且新 IPA 的构建号更高时，系统才能覆盖安装并保留应用数据。
+- GitHub Release 中的 IPA 仍然保留，OTA 页面只是提供更方便的系统安装入口。
