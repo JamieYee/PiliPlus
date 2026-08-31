@@ -12,6 +12,7 @@
 - 每次成功构建都会上传签名后的 IPA Artifact，并保留 30 天。
 - 手动运行时，开启 `publish_release` 会同时创建 GitHub Release；关闭时只上传 Artifact。
 - 定时构建直接使用上游 Tag 作为本仓库的 Release Tag。手动构建未填写 Release Tag 时，会按 `ios-v<上游版本>-<上游提交>` 自动生成。
+- 定时构建的 Release 标题和 IPA 文件名均使用上游 Tag，例如 `PiliPlus iOS 2.1.2.3` 和 `PiliPlus_iOS_2.1.2.3.ipa`。
 
 ## Actions 配置
 
