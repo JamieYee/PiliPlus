@@ -47,6 +47,7 @@ jobs:
       upstream_short_sha: ${{ steps.metadata.outputs.upstream_short_sha }}
       version: ${{ steps.metadata.outputs.version }}
       release_tag: ${{ steps.metadata.outputs.release_tag }}
+      release_label: ${{ steps.metadata.outputs.release_label }}
       should_build: ${{ steps.metadata.outputs.should_build }}
       publish_release: ${{ steps.metadata.outputs.publish_release }}
     steps:
@@ -127,6 +128,12 @@ jobs:
             publish_release="true"
           fi
 
+          release_label="$(printf '%s' "$release_tag" | sed 's/[^A-Za-z0-9._-]/-/g')"
+          if [ -z "$release_label" ]; then
+            echo "::error::Unable to create a safe IPA filename from the Release tag."
+            exit 1
+          fi
+
           encoded_tag="$(jq -rn --arg value "$release_tag" '$value | @uri')"
           release_status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
             --header "Authorization: Bearer $GH_TOKEN" \
@@ -144,6 +151,7 @@ jobs:
             echo "upstream_short_sha=$upstream_short_sha"
             echo "version=$version"
             echo "release_tag=$release_tag"
+            echo "release_label=$release_label"
             echo "should_build=$should_build"
             echo "publish_release=$publish_release"
           } >> "$GITHUB_OUTPUT"
@@ -326,14 +334,14 @@ jobs:
             exit 1
           fi
 
-          output_name="PiliPlus_iOS_${{ needs.prepare.outputs.version }}_${{ needs.prepare.outputs.upstream_short_sha }}.ipa"
+          output_name="PiliPlus_iOS_${{ needs.prepare.outputs.release_label }}.ipa"
           cp "$ipa_path" "$output_name"
           echo "IPA_PATH=$output_name" >> "$GITHUB_ENV"
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v7
         with:
-          name: PiliPlus-iOS-${{ needs.prepare.outputs.version }}-${{ needs.prepare.outputs.upstream_short_sha }}
+          name: PiliPlus-iOS-${{ needs.prepare.outputs.release_label }}
           path: ${{ env.IPA_PATH }}
           if-no-files-found: error
           retention-days: 30
@@ -343,7 +351,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.prepare.outputs.release_tag }}
-          name: PiliPlus iOS ${{ needs.prepare.outputs.version }} (${{ needs.prepare.outputs.upstream_short_sha }})
+          name: PiliPlus iOS ${{ needs.prepare.outputs.release_tag }}
           target_commitish: ${{ github.sha }}
           generate_release_notes: false
           body: |
